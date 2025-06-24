@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 import time
+import pytz
 from datetime import datetime
 
 st.set_page_config(page_title="Hero or Zero Dashboard", layout="wide")
@@ -9,7 +10,8 @@ st.title("🚀 Hero or Zero Trade Dashboard")
 st.caption("Live OI + Pivot Levels + Hero/Zero Trade (with 15% Target & 5% SL)")
 
 # Add a Last Updated Timestamp
-st.markdown(f"**Last Updated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+ist = pytz.timezone("Asia/Kolkata")
+st.markdown(f"**Last Updated:** {datetime.now(ist).strftime('%Y-%m-%d %H:%M:%S')} (IST)")
 
 indices = {
     "NIFTY": ("NIFTY", 50),
