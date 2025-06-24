@@ -38,7 +38,7 @@ def fetch_option_chain(symbol, retries=3, delay=3):
                 time.sleep(delay)
             else:
                 return {"error": str(e)}
-                
+
 def calculate_levels_and_trade(symbol, data, step):
     if "error" in data:
         return {
@@ -97,7 +97,7 @@ def calculate_levels_and_trade(symbol, data, step):
                 entry_price = next((x["PE"]["lastPrice"] for x in records if x.get("strikePrice") == strike and "PE" in x), None)
             break
 
-    if entry_price and entry_price >= 1:
+    if entry_price is not None and isinstance(entry_price, (int, float)) and entry_price >= 1:
         target_price = round(entry_price * 1.15, 2)
         stop_loss = round(entry_price * 0.95, 2)
         entry_price = round(entry_price, 2)
@@ -118,13 +118,12 @@ def calculate_levels_and_trade(symbol, data, step):
         "Stoploss (5%)": stop_loss if isinstance(stop_loss, float) else "—"
     }
 
-
 results = []
 for symbol, (symbol_name, step) in indices.items():
     data = fetch_option_chain(symbol_name)
     results.append(calculate_levels_and_trade(symbol_name, data, step))
 
-# 👇 Mobile Friendly Output
+# Mobile-friendly display
 for result in results:
     with st.expander(f"📊 {result.get('Index','—')} - Spot: {result.get('Spot','—')}"):
         col1, col2 = st.columns(2)
@@ -143,4 +142,3 @@ for result in results:
 with st.expander("👀 See Complete Table"):
     df = pd.DataFrame(results)
     st.dataframe(df, use_container_width=True)
-
