@@ -4,14 +4,6 @@ import requests
 import time
 
 st.set_page_config(page_title="Hero or Zero Dashboard", layout="wide")
-st.markdown("""
-<style>
-table {
-    font-size: 14px;
-}
-</style>
-""", unsafe_allow_html=True)
-
 st.title("🚀 Hero or Zero Trade Dashboard")
 st.caption("Live OI + Pivot Levels + Hero/Zero Trade (with 15% Target & 5% SL)")
 
@@ -19,7 +11,7 @@ indices = {
     "NIFTY": ("NIFTY", 50),
     "BANKNIFTY": ("BANKNIFTY", 100),
     "FINNIFTY": ("FINNIFTY", 50),
-    "MIDCPNIFTY": ("MIDCPNIFTY", 50),
+    "MIDCPNIFTY": ("MIDCPNIFTY", 50)
 }
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -83,7 +75,9 @@ def calculate_levels_and_trade(symbol, data, step):
 
     atm = round(spot / step) * step
     trade_type = "⚠️ Wait for Breakout"
-    entry_price = target_price = stop_loss = "—"
+    entry_price = None
+    target_price = None
+    stop_loss = None
 
     for r in records:
         if "CE" in r and "PE" in r and r["strikePrice"] == atm:
@@ -113,32 +107,25 @@ def calculate_levels_and_trade(symbol, data, step):
         "R2": round(r2, 2),
         "R3": round(r3, 2),
         "Hero/Zero Trade": trade_type,
-        "Entry": entry_price if isinstance(entry_price, float) else "—",
-        "Target (15%)": target_price if isinstance(target_price, float) else "—",
-        "Stoploss (5%)": stop_loss if isinstance(stop_loss, float) else "—"
+        "Entry": entry_price if entry_price is not None and isinstance(entry_price, (int, float)) else "—",
+        "Target (15%)": target_price if target_price is not None else "—",
+        "Stoploss (5%)": stop_loss if stop_loss is not None else "—"
     }
 
 results = []
 for symbol, (symbol_name, step) in indices.items():
-    data = fetch_option_chain(symbol_name)
-    results.append(calculate_levels_and_trade(symbol_name, data, step))
+    try:
+        data = fetch_option_chain(symbol_name)
+        results.append(calculate_levels_and_trade(symbol_name, data, step))
+    except Exception as e:
+        results.append({
+            "Index": symbol_name,
+            "Hero/Zero Trade": "❌ Error",
+            "Entry": "—",
+            "Target (15%)": "—",
+            "Stoploss (5%)": "—",
+            "Error": str(e)
+        })
 
-# Mobile-friendly display
-for result in results:
-    with st.expander(f"📊 {result.get('Index','—')} - Spot: {result.get('Spot','—')}"):
-        col1, col2 = st.columns(2)
-
-        with col1:
-            st.markdown(f"**Trade:** {result.get('Hero/Zero Trade','—')}")
-            st.markdown(f"**Entry:** {result.get('Entry','—')}")
-            st.markdown(f"**Target (15%):** {result.get('Target (15%)','—')}")
-            st.markdown(f"**Stoploss (5%):** {result.get('Stoploss (5%)','—')}")
-
-        with col2:
-            st.markdown(f"**Pivot:** {result.get('Pivot','—')}")
-            st.markdown(f"**R1/R2/R3:** {result.get('R1','—')} / {result.get('R2','—')} / {result.get('R3','—')}")
-            st.markdown(f"**S1/S2/S3:** {result.get('S1','—')} / {result.get('S2','—')} / {result.get('S3','—')}")
-
-with st.expander("👀 See Complete Table"):
-    df = pd.DataFrame(results)
-    st.dataframe(df, use_container_width=True)
+df = pd.DataFrame(results)
+st.dataframe(df, use_container_width=True)
