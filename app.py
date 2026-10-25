@@ -36,18 +36,37 @@ SQUARE_OFF_TIME = (15, 15)
 EXPIRY_DAY_EXIT_TIME = (14, 30)
 REFRESH_SECONDS = 60
 
+NSE_BASE = "https://www.nseindia.com"
+# NSE rejects bare user-agents (403), so send full browser-like headers
+NSE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/141.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": f"{NSE_BASE}/option-chain"
+}
+
 @st.cache_data(ttl=REFRESH_SECONDS, show_spinner=False)
 def fetch_option_chain(symbol, retries=3, delay=3):
-    url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
-    headers = {"User-Agent": "Mozilla/5.0"}
+    # The old /api/option-chain-indices endpoint was retired (404). The v3 endpoint needs an expiry,
+    # which comes from option-chain-contract-info.
     session = requests.Session()
     for attempt in range(retries):
         try:
-            session.get("https://www.nseindia.com", headers=headers, timeout=5)
-            response = session.get(url, headers=headers, timeout=10)
+            session.get(f"{NSE_BASE}/option-chain", headers=NSE_HEADERS, timeout=10)
+            info = session.get(f"{NSE_BASE}/api/option-chain-contract-info?symbol={symbol}",
+                               headers=NSE_HEADERS, timeout=10)
+            info.raise_for_status()
+            expiry = info.json()["expiryDates"][0]
+            response = session.get(f"{NSE_BASE}/api/option-chain-v3?type=Indices&symbol={symbol}&expiry={expiry}",
+                                   headers=NSE_HEADERS, timeout=10)
             response.raise_for_status()
-            return response.json()
-        except (requests.exceptions.Timeout, requests.exceptions.RequestException) as e:
+            data = response.json()
+            if not data.get("records", {}).get("data"):
+                raise ValueError("NSE returned an empty option chain")
+            data["records"]["expiryDates"] = [expiry]
+            return data
+        except (requests.exceptions.RequestException, ValueError, KeyError, IndexError) as e:
             if attempt < retries - 1:
                 time.sleep(delay)
             else:
@@ -189,7 +208,9 @@ def calculate_levels_and_trade(symbol, data, step):
 
     # Use only the nearest expiry so OI walls, prices and IV all refer to the same contract
     expiry = (records_all.get("expiryDates") or [None])[0]
-    records = [r for r in records_all.get("data", []) if expiry is None or r.get("expiryDate") == expiry]
+    # v3 records carry the expiry as "expiryDates"; the old API used "expiryDate"
+    records = [r for r in records_all.get("data", [])
+               if expiry is None or r.get("expiryDate", r.get("expiryDates")) in (None, expiry)]
 
     ce_oi = {r["strikePrice"]: r["CE"]["openInterest"] for r in records if "CE" in r}
     pe_oi = {r["strikePrice"]: r["PE"]["openInterest"] for r in records if "PE" in r}
@@ -322,8 +343,8 @@ def render_dashboard():
             trade_rows.append({"Index": symbol_name, "Hero/Zero Trade": "❌ Error", "Reason": str(e)})
 
     st.subheader("Trades & Exit Signals")
-    st.dataframe(pd.DataFrame(trade_rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(trade_rows), width="stretch", hide_index=True)
     st.subheader("Levels")
-    st.dataframe(pd.DataFrame(level_rows), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(level_rows), width="stretch", hide_index=True)
 
 render_dashboard()
